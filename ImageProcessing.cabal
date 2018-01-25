@@ -23,7 +23,8 @@ library
                        strict >= 0.3.2,
                        bmp >= 1.0,
                        bytestring,
-                       word8
+                       word8,
+                       containers
 
 
 

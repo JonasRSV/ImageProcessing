@@ -1,10 +1,11 @@
-module BMPPROC (meanValueGrouping, meshImage) where
+module BMPPROC (betterMeanValueGrouping, meanValueGrouping, meshImage, maybeThisIsOk) where
 
 import Utils
 import Codec.BMP
 import System.Environment
 import Data.ByteString
 import Data.Word8
+import Data.Map
 
 
 type Mesher = (Int, Int) -> Int -> [RGBA] -> [Double]
@@ -61,3 +62,58 @@ meanValueGrouping _ rDim rgba = grouping rgba
                           (RGBA red green blue alpha) = sum pgroup 
                           meanValue = red + green + blue + alpha `quot` Prelude.length pgroup
                         in fromIntegral meanValue : grouping rest
+
+
+{- Still bad but better -}
+betterMeanValueGrouping :: Mesher
+betterMeanValueGrouping (x, y) rDim rgba =  Prelude.take rDim $ Prelude.map ((/ (fromIntegral pixelsPerGroup)) . sum . snd) $ toList grouper
+  where
+    value :: RGBA -> Double
+    value (RGBA red green blue alpha) = fromIntegral $ red * 256^3 + green * 256^2 + blue*256 + alpha 
+
+    pixelsPerGroup :: Int
+    pixelsPerGroup = Prelude.length rgba `quot` rDim
+
+    pixelsPerAxis :: Int
+    pixelsPerAxis =  floor . sqrt . fromIntegral $ pixelsPerGroup
+
+    xGroup :: Int -> Int
+    xGroup x' = ((x' * pixelsPerAxis) `quot` x)
+
+    yGroup :: Int -> Int
+    yGroup y' = ((y' * pixelsPerAxis) `quot` y)
+
+    idxToxy :: Int -> (Int, Int)
+    idxToxy idx = (idx `mod` x, idx `quot` y)
+
+    idxToGroup :: Int -> Int
+    idxToGroup idx = let (x', y') = idxToxy idx
+                      in yGroup x' + xGroup y'
+                         
+
+    updateMap :: (RGBA, Int) -> Map Int [Double] -> Map Int [Double]
+    updateMap (v, i) m = let group = idxToGroup i
+                            in if member group m
+                                  then adjust (value v:) group m
+                                  else insert group [value v] m
+
+    grouper :: Map Int [Double]
+    grouper = Prelude.foldr updateMap Data.Map.empty $ Prelude.zip rgba [0..]
+
+
+maybeThisIsOk :: Mesher
+maybeThisIsOk _ rDim rgba = groupr rgba
+  where
+    pixelsPerGroup :: Int 
+    pixelsPerGroup = Prelude.length rgba `quot` rDim
+
+    groupr [] = []
+    groupr pixels = let (pg, rest) = Prelude.splitAt pixelsPerGroup pixels
+                        (RGBA red green blue _) = sum pg
+                        l = Prelude.length pg
+                        meanRed = red `quot` l
+                        meanGreen = green `quot` l
+                        meanBlue = blue `quot` l
+                        mv = meanRed^3 + meanGreen^2 + meanBlue
+                      in fromIntegral mv : groupr rest
+
